@@ -1,0 +1,152 @@
+---
+title: "hw2"
+author: "YICEN YANG"
+date: '2023-02-23'
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE,message=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(DT)
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(patchwork)
+```
+
+Here is a data set which is about heart disease, our main purpose is to figure what will lead to heart disease based on several factors
+
+data:https://www.kaggle.com/datasets/data855/heart-disease
+
+
+```{r,r,message=F}
+data=read.csv("https://github.com/yicenyang/stat436/raw/main/heart.csv")
+str(data)
+```
+
+
+```{r,message=F, include=FALSE}
+##clean the dataset and some prepare works
+data$target=as.factor(data$target)
+data$target=as.factor(data$target)
+data%>%drop_na()
+data$index <- 1:nrow(data)
+```
+
+one common thought is trestbps, which is resting blood pressure, will influence the chance of heart disease. And since age might be strongly related to thalach (maximum heart rate achieved),we use scatter plot to put them together (I believe younger people will have a higher heart rate)
+other interesting points might be chol: serum cholestoral in mg/dl, since serum cholestoral, blood pressure, and blood sugar are three main factors that cause the heart disease I believe.
+
+
+
+```{r, fig.width = 18, fig.height = 16}
+p <- list()
+ p[["bar1"]] <- ggplot(data,aes(x=(trestbps)))+
+  geom_bar(aes(fill=target))
+ 
+ p[["scatter"]] <- ggplot(data,aes(x=age,y=thalach))+
+  geom_point(aes(col=target))+
+  theme(legend.position = "none") 
+ 
+ p[["bar2"]] <-ggplot(data,aes(x=(chol)))+
+  geom_bar(aes(fill=target))+
+   theme(legend.position = "none") 
+
+
+
+(p[["bar1"]]+p[["bar2"]])/ p[["scatter"]] +
+    plot_layout(guides = "collect") &
+   plot_annotation(theme = theme(legend.position = "bottom", title = element_text(size = 10)))
+```
+
+
+
+```{r}
+data_table <- function(data, selected_) {
+  data %>%
+    filter(selected_) %>%
+    select(age,sex,trestbps,chol,thalach,thal,target)
+}
+
+counts <- list(
+  "trestbps" = count(data, trestbps),
+  "chol" = count(data, chol),
+  "age" = count(data, age)
+)
+
+
+bar_plot <- function(sub_flights, v, width = 5) {
+  ggplot(counts[[v]], aes(.data[[v]], n)) +
+    geom_col(fill = "#d3d3d3", stat = "identity", width = width) +
+    geom_col(data = sub_flights, stat = "identity", width = width)
+}
+
+plot_overlay <- function(selected_, v, width = 5) {
+  data %>%
+    filter(selected_) %>%
+    count(.data[[v]]) %>%
+    bar_plot(v, width)
+}
+
+scatterplot <- function(data, selected_) {
+    data %>%
+      mutate(selected_ = selected_) %>%
+      ggplot() +
+      geom_point(aes(age,thalach , col=target, alpha = as.numeric(selected_))) +
+      scale_alpha(range = c(0.05, 0.6))
+}
+reset_selection <- function(x, brush) {
+  xvar <- str_match(brush$mapping$x, "trestbps|chol|age")[1]
+  brushedPoints(x, brush, allRows = TRUE, xvar = xvar)$selected_
+}
+```
+
+
+**main code**
+
+```{r, fig.width = 18, fig.height = 16}
+ui <- fluidPage(
+   fluidRow(
+     column(6, 
+            plotOutput("histogram_trestbps", brush = brushOpts("plot_brush", direction = "x"), height = 200),
+            plotOutput("histogram_chol", brush = brushOpts("plot_brush", direction = "x"), height = 200),
+            plotOutput("histogram_age", brush = brushOpts("plot_brush", direction = "x"), height = 200),
+            plotOutput("scatterplot", brush = "plot_brush")
+            
+            ),
+    column(6, dataTableOutput("table"))
+  ),
+)
+ 
+
+
+server <- function(input, output) {
+  selected <- reactiveVal(rep(TRUE, nrow(data)))
+  
+  observeEvent(
+    input$plot_brush,
+    selected(reset_selection(data, input$plot_brush))
+  )
+  
+  output$histogram_trestbps <- renderPlot(plot_overlay(selected(),"trestbps",1))
+  output$histogram_chol <- renderPlot(plot_overlay(selected(),"chol",5))
+  output$histogram_age <- renderPlot(plot_overlay(selected(),"age",1))
+  output$scatterplot <- renderPlot(scatterplot(data, selected()))
+  output$table <- renderDataTable(data_table(data, selected()))
+  
+}
+ 
+ shinyApp(ui, server)
+```
+
+
+**discussion**
+
+by brushing on trestbps, which is resting blood pressure, it seems that for 
+higher trestbps, most people still do not have heart disease, which may indicate that trestbps is not the main causes for heartache; when brushing on chol, serum cholestoral in mg/dl, it shows that most people got heart disease, which means cholestoral is a main factor for heart disease. Moreover, by brushing on age plot, it seems that most of 60s and older has a higher chol value (around 300), while for those who are only around 40, the chol is around. And according to my observation, which high chol will cause heart disease, they should pay more attention to their heart health. Finally, by the scatter plot, we see that for thalach (maximum heart rate achieved) higher than 150, most of them get heart disease, maybe it is also a main factor of heart disease.
+
+
+
+
+
+
