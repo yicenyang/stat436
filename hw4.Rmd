@@ -1,0 +1,104 @@
+---
+title: "hw4"
+author: "YICEN YANG"
+date: '2023-04-13'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+```
+
+
+**read the data**
+
+- **source** https://www.kaggle.com/datasets/shrutisaxena/food-nutrition-dataset?resource=download
+
+- **github** https://github.com/yicenyang/stat436
+
+```{r}
+data=read.csv('https://raw.githubusercontent.com/yicenyang/stat436/main/food.csv')%>%
+  rename('id'='Nutrient.Data.Bank.Number')%>%
+  select(- Data.Household.Weights.1st.Household.Weight.Description,-Data.Household.Weights.2nd.Household.Weight.Description)#remove <chr> data
+  
+head(data)
+```
+
+**brief introduction**
+
+- Category:The general category of food that this item belongs to.
+
+- Description :A full description of this food item, including its category and some sub categories.
+
+- id: A unique ID for this food item.
+
+- Data.Alpha Carotene :Alpha Carotene is a form of carotene with a Beta-ionone ring at one end and an Alpha-ionone ring at the opposite end. Measured in micrograms (mcg).
+
+- Data.Ash: Ash or mineral content is the portion of the food or any organic material that remains after it is burned at very high temperatures. Measured in grams (g).
+
+- Data.Beta Carotene: An organic, strongly colored red-orange pigment abundant in plants and fruits. Measured in micrograms (mcg).
+
+- Data.Beta Cryptoxanthin: Cryptoxanthin is a natural carotenoid pigment.Measured in micrograms (mcg).
+
+- Data.Carbohydrate: In food science and in many informal contexts, the term carbohydrate often means any food that is particularly rich in the complex carbohydrate starch (such as cereals, bread and pasta) or simple carbohydrates, such as sugar (found in candy, jams, and desserts). Measured in grams (g) by difference.
+
+- Data.Cholesterol: An organic molecule that is a sterol (or modified steroid), a type of lipid molecule, and is biosynthesized by all animal cells, because it is an essential structural component of all animal cell membranes. Measured in milligrams (mg).
+
+- Data.Choline: A water-soluble vitamin. Humans make choline in the liver. Whether dietary or supplemental choline is beneficial or harmful to
+
+
+
+**PCA step**
+
+```{r}
+pca_recipe <- recipe(~., data = data) %>%
+  update_role(Description, id, Category, new_role = "id") %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors())
+pca_prep <- prep(pca_recipe)
+```
+
+```{r, fig.width = 16, fig.height = 18}
+pca_result <- tidy(pca_prep, 2)%>%
+  mutate(terms = str_replace(terms, "Data.", ""))
+ggplot(pca_result %>% filter(component %in% str_c("PC", 1:6))) +
+  geom_col(aes(x = value, y = terms)) +
+  facet_wrap(~ component) +
+  labs(x = "Component", y = "Features")
+```
+
+- interestingly, the first PCA component (PC1) shows a really negative weights on water, but almost same weight on the other nutrients component, which we may believe it helps to distinguish the fruit, vegetable, baby food from other things. Also PC2 shows heavy weights on fat, which we may be con fidence that it helps to distinguish oil, nuts. Simillary the third PCA shows a high weight on carbonhydrate but really negative weight on fat, which helps to distinguish fruit, sugar, drinks from other stuff like oil and nuts. 
+
+
+
+```{r, fig.width = 18}
+pca_scores <- bake(pca_prep, data)
+group_order <- pca_scores %>%
+  group_by(Category) %>%
+  summarise(mpc2 = mean(PC2)) %>%
+  arrange(mpc2) %>%
+  pull(Category)
+pca_scores =pca_scores %>%
+  mutate(group = factor(Category, levels = group_order))
+head(pca_scores)
+```
+
+```{r,fig.height = 40,fig.width = 18}
+library(ggrepel)
+pca_scores %>%
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_vline(xintercept = 0, col = "#4a4a4a") +
+  geom_hline(yintercept = 0, col = "#4a4a4a") +
+  geom_point(size = 0.4, alpha = 0.6) +
+  xlim(-10, 30) +
+  ylim(-20, 20)+
+  geom_text_repel(aes(label=group),check_overlap = TRUE, size = 3)+
+  scale_color_brewer(palette = "Set2") +
+  coord_fixed() 
+```
+Similar as before, we see the top-right part,which indicates high PC1 and PC2, is oil, and the left side of PC1 is Kale, which is vegetable and contains much water. 
+
+
